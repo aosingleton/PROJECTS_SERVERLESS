@@ -1,0 +1,26 @@
+service: hello-sls
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  region: us-east-2
+  stage: dev
+# generic function name
+functions:
+  hello:
+    handler: handler.hello
+    memorySize: 1024
+  
+  # more complex function with http event
+  add:
+    handler: second_lambda.add
+    name: simple_addition_lambda
+    memorySize: 512
+    timeout: 10  # time in seconds
+    description: This lambda function adds stuff
+    events:
+      - http:
+          # path that gets added to the endpoint
+          path: math/add
+          method: post
+          cors: true

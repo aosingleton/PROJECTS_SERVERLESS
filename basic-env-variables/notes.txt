@@ -1,0 +1,6 @@
+Test function with log
+    serverless invoke --function=createUser --log   
+    serverless invoke --function=resetPassword --log
+
+Test function locally
+    serverless invoke local --function=createUser --log

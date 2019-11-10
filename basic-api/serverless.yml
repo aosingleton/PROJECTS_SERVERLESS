@@ -1,0 +1,21 @@
+service: basic-api
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  region: us-east-1
+  stage: dev3
+  memorySize: 256
+  timeout: 15
+
+
+functions:
+  helloOrig:
+    handler: handler.helloOrig
+    timeout: 30
+
+  hello:
+    handler: handler.hello
+    memorySize: 128
+    timeout: 10
+  

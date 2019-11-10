@@ -1,0 +1,130 @@
+service: serverless-vpc
+provider:
+  name: aws
+  runtime: nodejs10.x
+  region: us-east-1
+  stage: prod
+
+functions:
+  my_lambda:
+    handler: handler.hello
+    # undescrore is no good
+    name: samus_lambda
+    description: Lambda with VPC
+    # timeout: 100
+    memorySize: 1024
+    vpc:
+      securityGroupsIds:
+        - Ref: samusTempSSG
+      subnetIds:
+        - Ref: samusTempSubnet
+        - Ref: samusTempSubnet2
+
+Resources:
+  samusTempVPC:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: 10.0.0.0/16
+  
+  samusTempSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      VpcId: !Ref samusTempVPC
+      MapPublicIpOnLaunch: True
+  
+  samusTempSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.2.0.0/16
+      VpcId: !Ref samusTempVPC
+      MapPublicIpOnLaunch: True
+
+  samusTempRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: 
+      - samusTempVPC
+    Properties:
+      VpcId: !Ref samusTempVPC
+
+  samusTempRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: 
+      - samusTempSubnet
+    Properties: 
+      RouteTableId: !Ref samusTempRouteTable
+      SubnetId: !Ref samusTempSubnet
+
+  samusTempInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  samusTempInternetGatewayConnnection:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref samusTempInternetGateway
+      VpcId: !Ref samusTempVPC
+    
+  samusTempRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId: !Ref samusTempRouteTable
+      GatewayId: !Ref samusTempInternetGateway
+
+  samusTempRole: 
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - 
+            Effect: Allow
+            Action: '*'
+            Principal: 
+              Service: 
+                - 'lambda.amazonaws.com'
+
+
+  # included policies support the creation and monitoring of metrics
+  samusTempDashboardPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: samusTempPolicy
+      PolicyDocument:
+        Statement:
+          - 
+            Effect: Allow
+            Action: 
+              - '*'
+            Resource: '*'
+      Roles:
+        - !Ref samusTempRole
+
+  # creating group with open traffic rules
+  samusTempSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP, SSH
+      VpcId: !ImportValue samusTempVPC1ID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+

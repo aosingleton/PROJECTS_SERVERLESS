@@ -1,0 +1,21 @@
+service: env-variables
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  # provider environment variable goes in all functions
+  environment:
+    EMAIL_SERVICE_API_KEY: SOMESECRETKEY
+
+functions:
+  # first function with environment variables for use with the lambda
+  createUser:
+    handler: handler.createUser
+    environment:
+      PASSWORD_ITERATIONS: 4096
+      PASSWORD_DERIVED_KEY_LENGTH: 256
+
+  # additional lambda being created to reset the password if lost.
+  # has no environment variables
+  resetPassword:
+    handler: handler.resetPassword

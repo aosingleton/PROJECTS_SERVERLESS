@@ -1,0 +1,19 @@
+
+service: sls-play
+
+provider:
+  name: aws
+  runtime: python2.7
+
+functions:
+  currentTime:
+    handler: handler.endpoint
+    events:
+      - http: 
+          path: ping
+          method: get
+  hello:
+    handler: handler.hello
+
+plugins:
+  serverless-openwhisk

@@ -1,0 +1,234 @@
+service: iconf-sls
+custom:
+  pythonRequirements:
+    slim: true
+    dockerizePip: true
+    pipCmdExtraArgs:
+      - --no-cache-dir
+    fileName: requirements.txt
+    layers:
+      - {Ref: PythonRequirementsLambdaLayer}
+plugins:
+  - serverless-iam-roles-per-function
+  - serverless-python-requirements
+provider:
+  name: aws
+  deploymentBucket:
+    tags: # Tags that will be added to each of the deployment resources
+      O_Project: iconference
+      O_Environment: ${opt:stage, 'dev2'}
+  tags: 
+      O_Project: iconference
+      O_Environment: ${opt:stage, 'dev2'}
+  stackTags: 
+      O_Project: iconference
+      O_Environment: ${opt:stage, 'dev2'}
+  runtime: python3.7
+  stage: ${opt:stage, 'dev2'}
+  environment:
+    stage: ${self:provider.stage}
+    project: iconference
+    ProjectCrawler: ${ssm:/iconference/${self:provider.stage}/ProjectCrawler}
+    AccountRegion: ${ssm:/iconference/${self:provider.stage}/AccountRegion}
+    AccountId: ${ssm:/iconference/${self:provider.stage}/AccountId}
+    AccountPartition: ${ssm:/iconference/${self:provider.stage}/Partition}
+    S3GlueBucket: ${ssm:/iconference/${self:provider.stage}/S3GlueBucket}
+    ProjectGlueJob: ${ssm:/iconference/${self:provider.stage}/ProjectGlueJob}
+    PermissionBoundaryArn: ${ssm:/iconference/${self:provider.stage}/PermissionBoundaryArn}
+    CrawlerTriggerFunction: ${self:service}-${self:provider.stage}-crawlerTrigger
+
+
+resources:
+  Resources:
+    convertRole:
+      Type: AWS::IAM::Role
+      Properties: 
+        AssumeRolePolicyDocument: 
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        PermissionsBoundary: ${self:provider.environment.PermissionBoundaryArn}
+        RoleName: !Join [ '-', [ "iconference", "${opt:stage}", "convert", "role"]]
+        Tags: 
+          - Key: O_Project
+            Value: iconference
+          - Key: O_Environment
+            Value: ${opt:stage}
+    convertPolicy:
+      Type: AWS::IAM::Policy
+      Properties: 
+        PolicyDocument: 
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Action": [
+                        "logs:CreateLogStream",
+                        "logs:PutLogEvents"
+                    ],
+                    "Resource": [
+                        "arn:${self:provider.environment.AccountPartition}:logs:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:log-group:/aws/lambda/iconf-sls-${self:provider.stage}-convert:*:*"
+                    ],
+                    "Effect": "Allow"
+                },
+                {
+                    "Action": [
+                        "s3:PutObject",
+                        "s3:GetObject",
+                        "s3:ListBucket",
+                        "lambda:InvokeFunction",
+                        "glue:UpdateCrawler"
+                    ],
+                    "Resource": [
+                        'arn:${self:provider.environment.AccountPartition}:glue:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:crawler/${self:provider.environment.ProjectCrawler}',
+                        'arn:${self:provider.environment.AccountPartition}:s3:::${self:provider.environment.S3GlueBucket}/source-data/*',
+                        'arn:${self:provider.environment.AccountPartition}:s3:::${self:provider.environment.S3GlueBucket}*',
+                        'arn:${self:provider.environment.AccountPartition}:lambda:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:function:${self:provider.environment.CrawlerTriggerFunction}'],
+                    "Effect": "Allow"
+                }
+            ]
+        } 
+        PolicyName: !Join [ '-', [ "iconference", "${opt:stage}", "convert", "policy" ]]
+        Roles: 
+          - !Ref convertRole
+    crawlerTriggerRole:
+      Type: AWS::IAM::Role
+      Properties: 
+        AssumeRolePolicyDocument: 
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        PermissionsBoundary: ${self:provider.environment.PermissionBoundaryArn}
+        RoleName: !Join [ '-', [ "iconference", "${opt:stage}", "crawler", "trigger", "role"]]
+        Tags: 
+          - Key: O_Project
+            Value: iconference
+          - Key: O_Environment
+            Value: ${opt:stage}
+    crawlerTriggerPolicy:
+      Type: AWS::IAM::Policy
+      Properties: 
+        PolicyDocument: 
+          {
+              "Version": "2012-10-17",
+              "Statement": [
+                  {
+                      "Action": [
+                          "logs:CreateLogStream",
+                          "logs:PutLogEvents"
+                      ],
+                      "Resource": [
+                          "arn:${self:provider.environment.AccountPartition}:logs:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:log-group:/aws/lambda/iconf-sls-${self:provider.stage}-crawlerTrigger:*:*"
+                      ],
+                      "Effect": "Allow"
+                  },
+                  {
+                      "Action": [
+                          "glue:StartCrawler",
+                          "lambda:InvokeFunction"
+                      ],
+                      "Resource": [
+                          'arn:${self:provider.environment.AccountPartition}:lambda:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:function:iconf-sls-${self:provider.stage}-runJobs',
+                          'arn:${self:provider.environment.AccountPartition}:glue:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:crawler/${self:provider.environment.ProjectCrawler}'
+                      ],
+                      "Effect": "Allow"
+                  }
+              ]
+          } 
+        PolicyName: !Join [ '-', [ "iconference", "${opt:stage}", "crawler", "trigger", "policy" ]]
+        Roles: 
+          - !Ref crawlerTriggerRole
+    runJobsRole:
+      Type: AWS::IAM::Role
+      Properties: 
+        AssumeRolePolicyDocument: 
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        PermissionsBoundary: ${self:provider.environment.PermissionBoundaryArn}
+        RoleName: !Join [ '-', [ "iconference", "${opt:stage}", "run", "jobs", "role"]]
+        Tags: 
+          - Key: O_Project
+            Value: iconference
+          - Key: O_Environment
+            Value: ${opt:stage}
+    runJobsPolicy:
+      Type: AWS::IAM::Policy
+      Properties: 
+        PolicyDocument: 
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Action": [
+                            "logs:CreateLogStream",
+                            "logs:PutLogEvents"
+                        ],
+                        "Resource": [
+                            "arn:${self:provider.environment.AccountPartition}:logs:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:log-group:/aws/lambda/iconf-sls-${self:provider.stage}-runJobs:*:*"
+                        ],
+                        "Effect": "Allow"
+                    },
+                    {
+                        "Action": [
+                            "glue:GetCrawler",
+                            "glue:StartJobRun"
+                        ],
+                        "Resource": [
+                            'arn:${self:provider.environment.AccountPartition}:glue:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:job/${self:provider.environment.ProjectGlueJob}',
+                            'arn:${self:provider.environment.AccountPartition}:glue:${self:provider.environment.AccountRegion}:${self:provider.environment.AccountId}:crawler/${self:provider.environment.ProjectCrawler}'
+                        ],
+                        "Effect": "Allow"
+                    }
+                ]
+            }
+        PolicyName: !Join [ '-', [ "iconference", "${opt:stage}", "run", "jobs", "policy" ]]
+        Roles: 
+          - !Ref runJobsRole
+functions:
+  convert:
+    handler: convert/convert.lambda_handler
+    timeout: 900
+    role: arn:${self:provider.environment.AccountPartition}:iam::${self:provider.environment.AccountId}:role/iconference-${self:provider.stage}-convert-role
+    events:
+      - s3:
+          bucket: ${self:provider.environment.S3GlueBucket}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: source-data/
+          existing: true
+  crawlerTrigger:
+    handler: crawler/crawlerTrigger.lambda_handler
+    timeout: 30
+    role: arn:${self:provider.environment.AccountPartition}:iam::${self:provider.environment.AccountId}:role/iconference-${self:provider.stage}-crawler-trigger-role
+  runJobs:
+    handler: runJobs/runJobs.lambda_handler
+    timeout: 300
+    role: arn:${self:provider.environment.AccountPartition}:iam::${self:provider.environment.AccountId}:role/iconference-${self:provider.stage}-run-jobs-role

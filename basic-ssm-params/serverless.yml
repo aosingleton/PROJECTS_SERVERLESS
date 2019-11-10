@@ -1,0 +1,23 @@
+# code grabs preexisiting ssm param named melee 
+# aws ssm put-parameter --name melee --value wario --type String
+service: basic-ssm-params
+
+# creating custom variable that will be call by provider and pass into all lambda
+custom:
+  settings:
+    SECRET_VALUE: ${ssm:melee}
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  region: us-east-1
+  stage: dev1
+  environment: 
+    SECRET_VALUE: ${self:custom.settings}
+    stage: prod
+
+
+functions:
+  hello:
+    handler: handler.hello
+  
